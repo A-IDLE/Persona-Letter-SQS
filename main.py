@@ -1,5 +1,8 @@
+import datetime
 import json
-from urllib import request, parse
+import time
+import urllib.request
+import urllib.parse
 import random
 import os
 import boto3
@@ -8,49 +11,55 @@ from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
 import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)
 import uuid
-import json
-import urllib.request
-import urllib.parse
 import io
-import mysql.connector
-from mysql.connector import Error
+import MySQLdb
 
+# Load environment variables
 load_dotenv()
+server_address = "127.0.0.1:8188"
+
+# Configure logging
+logging.basicConfig(
+    filename='app.log', 
+    filemode='a', 
+    format='%(asctime)s - %(levelname)s - %(message)s', 
+    level=logging.INFO
+)
 
 def update_task_status(task_id, status=1):
+    conn = None
     try:
-        # Establish a database connection (replace with your database credentials)
-        conn = mysql.connector.connect(
-            host=os.getenv("host"),
-            database=os.getenv("db_name"),
-            user=os.getenv("user"),
-            password=os.getenv("password")
+        # Retrieve database credentials from environment variables
+        host = os.getenv("host")
+        db_name = os.getenv("db_name")
+        user = os.getenv("user")
+        password = os.getenv("password")
+        
+        if not host or not db_name or not user or not password:
+            raise ValueError("Database credentials are not fully set in the environment variables")
+        
+        conn = MySQLdb.connect(
+            host=host,
+            db=db_name,
+            user=user,
+            passwd=password
         )
         
-        if conn.is_connected():
-            cursor = conn.cursor()
-            
-            # Define your UPDATE statement
-            sql = '''UPDATE tbl_letter SET letter_image_status = %s WHERE id = %s'''
-            
-            # Execute the UPDATE statement with provided parameters
-            cursor.execute(sql, (status, task_id))
-            
-            # Commit the changes
-            conn.commit()
-            
-            print("Task updated successfully.")
-    except Error as e:
-        print(f"An error occurred: {e}")
+        cursor = conn.cursor()
+        sql = '''UPDATE tbl_letter SET letter_image_status = %s WHERE letter_id = %s'''
+        cursor.execute(sql, (status, task_id))
+        conn.commit()
+        
+        logging.info("DB updated successfully.")
+    except (MySQLdb.Error, ValueError) as e:
+        logging.error(f"An error occurred: {e}")
     finally:
-        # Close the connection
-        if conn.is_connected():
+        if conn:
             cursor.close()
             conn.close()
 
 def upload_s3(image_name, image):
     BUCKET_NAME = os.getenv("S3_BUCKET")
-    S3_URL = os.getenv("S3_URL")
 
     s3 = boto3.client(
         's3',
@@ -58,12 +67,10 @@ def upload_s3(image_name, image):
         aws_secret_access_key=os.getenv("CREDENTIALS_SECRET_KEY"),
     )
 
-    object_name = image_name
+    object_name = f"letters/{image_name}"
 
-    # 파일로 업로드
     try:
         result = s3.upload_fileobj(image, BUCKET_NAME, object_name)
-        # s3.upload_file(object_name, BUCKET_NAME, object_name)
         return True
     except ClientError as e:
         logging.error(e)
@@ -71,17 +78,15 @@ def upload_s3(image_name, image):
     except Exception as e:
         logging.error(e)
         return False
-        
-    
 
-def queue_prompt(prompt):
+def queue_prompt(prompt, client_id):
     p = {"prompt": prompt, "client_id": client_id}
     data = json.dumps(p).encode('utf-8')
-    req =  urllib.request.Request("http://{}/prompt".format(server_address), data=data)
+    req = urllib.request.Request("http://{}/prompt".format(server_address), data=data)
     return json.loads(urllib.request.urlopen(req).read())
 
-def get_images(ws, prompt):
-    prompt_id = queue_prompt(prompt)['prompt_id']
+def get_images(ws, prompt, client_id):
+    prompt_id = queue_prompt(prompt, client_id)['prompt_id']
     output_images = {}
     current_node = ""
     while True:
@@ -92,7 +97,7 @@ def get_images(ws, prompt):
                 data = message['data']
                 if data['prompt_id'] == prompt_id:
                     if data['node'] is None:
-                        break #Execution is done
+                        break
                     else:
                         current_node = data['node']
         else:
@@ -103,54 +108,37 @@ def get_images(ws, prompt):
 
     return output_images
 
-def make_images(message):
-    # JSON 파일 경로
+def make_images(message, client_id):
+    letter_id = message["letter_id"]
+    keywords = message["keywords"]
     json_file_path = 'workflow_api.json'
 
-    # JSON 파일 열기 및 읽기
     with open(json_file_path, 'r') as file:
         prompt_text = json.load(file)
 
-    server_address = "127.0.0.1:8188"
-    client_id = str(uuid.uuid4())
-
-    #set the text prompt for our positive CLIPTextEncode
-    prompt_text["6"]["inputs"]["text"] = "masterpiece best quality man" + message.keywords
-
-    #set the seed for our KSampler node
+    prompt_text["6"]["inputs"]["text"] = f"masterpiece best quality man,{keywords}"
     prompt_text["3"]["inputs"]["seed"] = random.randint(0, 1000000)
 
     ws = websocket.WebSocket()
     ws.connect("ws://{}/ws?clientId={}".format(server_address, client_id))
-    images = get_images(ws, prompt_text)
+    images = get_images(ws, prompt_text, client_id)
 
-    print(images.keys())
-
-    #Commented out code to display the output images:
-    # for node_id in images:
-    #     for image_data, idx in images[node_id]:
-        # from PIL import Image
-        # image = Image.open(io.BytesIO(image_data))
-        # image.show()
-    for image_data, idx in images[0]:
-        image_name = f"{message.letter_id}_{idx}.jpg"
-        result = upload_s3(image_name, io.BytesIO(image_data))
-        if not result:
-            print(f"Failed to upload image {image_name}")
-            return False
+    for node_id in images:
+        for idx, image_data in enumerate(images[node_id]):
+            image_name = f"{letter_id}_{idx}.jpg"
+            result = upload_s3(image_name, io.BytesIO(image_data))
+            if not result:
+                logging.error(f"Failed to upload image {image_name}")
+                return False
         
-    update_task_status(message.letter_id)
+    update_task_status(letter_id)
 
-
-# AWS SQS 클라이언트 설정
 sqs = boto3.client(
     'sqs',
     region_name=os.getenv("AWS_REGION"),
     aws_access_key_id=os.getenv("CREDENTIALS_ACCESS_KEY"),
-	aws_secret_access_key=os.getenv("CREDENTIALS_SECRET_KEY"),
+    aws_secret_access_key=os.getenv("CREDENTIALS_SECRET_KEY"),
 )
-
-# SQS 대기열 URL 설정
 
 def receive_messages(max_number_of_messages: int = 1) -> None:
     try:
@@ -161,27 +149,29 @@ def receive_messages(max_number_of_messages: int = 1) -> None:
         )
         messages = response.get('Messages', [])
         if not messages:
-            # print("No messages received")
+            print(f"No messages received {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
             return
 
         for message in messages:
-            print(f"Received message: {message['Body']}")
-            message = json.loads(message['Body'])
-            make_images(message)
-            # 메시지 삭제 (선택 사항)
+            messageJson = json.loads(message['Body'])
+            logging.info(f"Received message: {messageJson}")
+            client_id = str(uuid.uuid4())
+            make_images(messageJson, client_id=client_id)
             receipt_handle = message['ReceiptHandle']
             sqs.delete_message(
                 QueueUrl=QUEUE_URL,
                 ReceiptHandle=receipt_handle
             )
-            print(f"Deleted message with receipt handle: {receipt_handle}")
+            logging.info(f"Deleted message with receipt handle: {receipt_handle}")
     except (BotoCoreError, ClientError) as error:
-        print(f"Failed to receive messages: {error}")
+        logging.error(f"Failed to receive messages: {error}")
+    except Exception as e:
+        logging.error(f"Unexpected error: {e}")
 
 if __name__ == "__main__":
-    # 메시지 보내기 테스트
-    # send_message("Hello, this is a test message2")
-
-    # 메시지 수신 테스트
     while True:
-        receive_messages(max_number_of_messages=5)
+        try:
+            time.sleep(2)
+            receive_messages(max_number_of_messages=5)
+        except Exception as e:
+            logging.error(f"An error occurred in the main loop: {e}")
