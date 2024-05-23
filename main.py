@@ -125,11 +125,12 @@ def make_images(message, client_id):
     # with open(json_file_path, 'r') as file:
     #     prompt_text = json.load(file)
     positive_prompt_id = find_entries_with_title(prompt_text, "Positive")
-    negative_prompt_id = find_entries_with_title(prompt_text, "Negative")
+    # negative_prompt_id = find_entries_with_title(prompt_text, "Negative")
     sampler_id = find_entries_with_title(prompt_text, "Sampler")
     sampler_id2 = find_entries_with_title(prompt_text, "Sampler2")
-    prompt_text[positive_prompt_id]["inputs"]["text"] = keywords
-    prompt_text[negative_prompt_id]["inputs"]["text"] = "nsfw"
+    origin_text = prompt_text[positive_prompt_id]["inputs"]["text"]
+    prompt_text[positive_prompt_id]["inputs"]["text"] = keywords+origin_text
+    # prompt_text[negative_prompt_id]["inputs"]["text"] = "nsfw"
     prompt_text[sampler_id]["inputs"]["seed"] = random.randint(0, 1000000)
     if(sampler_id2 != None):
         prompt_text[sampler_id2]["inputs"]["seed"] = random.randint(0, 1000000)
