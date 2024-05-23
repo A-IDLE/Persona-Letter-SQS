@@ -26,6 +26,7 @@ logging.basicConfig(
     level=logging.INFO
 )
 
+
 def update_task_status(task_id, status=1):
     conn = None
     try:
@@ -78,6 +79,13 @@ def upload_s3(image_name, image):
     except Exception as e:
         logging.error(e)
         return False
+    
+# Function to find and print the entries with the specified title
+def find_entries_with_title(data, title):
+    for key, value in data.items():
+        if "_meta" in value and value["_meta"].get("title") == title:
+            return key
+    return None
 
 def queue_prompt(prompt, client_id):
     p = {"prompt": prompt, "client_id": client_id}
@@ -111,13 +119,20 @@ def get_images(ws, prompt, client_id):
 def make_images(message, client_id):
     letter_id = message["letter_id"]
     keywords = message["keywords"]
-    json_file_path = 'workflow_api.json'
+    prompt_text = message["prompt_text"]
+    # json_file_path = 'workflow_api.json'
 
-    with open(json_file_path, 'r') as file:
-        prompt_text = json.load(file)
-
-    prompt_text["6"]["inputs"]["text"] = f"masterpiece best quality man,{keywords}"
-    prompt_text["3"]["inputs"]["seed"] = random.randint(0, 1000000)
+    # with open(json_file_path, 'r') as file:
+    #     prompt_text = json.load(file)
+    positive_prompt_id = find_entries_with_title(prompt_text, "Positive")
+    negative_prompt_id = find_entries_with_title(prompt_text, "Negative")
+    sampler_id = find_entries_with_title(prompt_text, "Sampler")
+    sampler_id2 = find_entries_with_title(prompt_text, "Sampler2")
+    prompt_text[positive_prompt_id]["inputs"]["text"] = keywords
+    prompt_text[negative_prompt_id]["inputs"]["text"] = "nsfw"
+    prompt_text[sampler_id]["inputs"]["seed"] = random.randint(0, 1000000)
+    if(sampler_id2 != None):
+        prompt_text[sampler_id2]["inputs"]["seed"] = random.randint(0, 1000000)
 
     ws = websocket.WebSocket()
     ws.connect("ws://{}/ws?clientId={}".format(server_address, client_id))
@@ -171,7 +186,7 @@ def receive_messages(max_number_of_messages: int = 1) -> None:
 if __name__ == "__main__":
     while True:
         try:
-            time.sleep(2)
+            time.sleep(5)
             receive_messages(max_number_of_messages=5)
         except Exception as e:
             logging.error(f"An error occurred in the main loop: {e}")
