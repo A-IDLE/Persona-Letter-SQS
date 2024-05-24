@@ -95,6 +95,7 @@ def queue_prompt(prompt, client_id):
 
 def get_images(ws, prompt, client_id):
     prompt_id = queue_prompt(prompt, client_id)['prompt_id']
+    save_image_websocket_node_id = find_entries_with_title(prompt, "SaveImageWebsocket")
     output_images = {}
     current_node = ""
     while True:
@@ -109,7 +110,7 @@ def get_images(ws, prompt, client_id):
                     else:
                         current_node = data['node']
         else:
-            if current_node == 'save_image_websocket_node':
+            if current_node == save_image_websocket_node_id:
                 images_output = output_images.get(current_node, [])
                 images_output.append(out[8:])
                 output_images[current_node] = images_output
@@ -169,15 +170,16 @@ def receive_messages(max_number_of_messages: int = 1) -> None:
             return
 
         for message in messages:
-            messageJson = json.loads(message['Body'])
-            logging.info(f"Received message: {messageJson}")
-            client_id = str(uuid.uuid4())
-            make_images(messageJson, client_id=client_id)
             receipt_handle = message['ReceiptHandle']
             sqs.delete_message(
                 QueueUrl=QUEUE_URL,
                 ReceiptHandle=receipt_handle
             )
+            messageJson = json.loads(message['Body'])
+            logging.info(f"Received message: {messageJson}")
+            client_id = str(uuid.uuid4())
+            make_images(messageJson, client_id=client_id)
+            
             logging.info(f"Deleted message with receipt handle: {receipt_handle}")
     except (BotoCoreError, ClientError) as error:
         logging.error(f"Failed to receive messages: {error}")
