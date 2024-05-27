@@ -121,16 +121,19 @@ def make_images(message, client_id):
     letter_id = message["letter_id"]
     keywords = message["keywords"]
     prompt_text = message["prompt_text"]
+    character_id = message["character_id"]
     # json_file_path = 'workflow_api.json'
 
     # with open(json_file_path, 'r') as file:
     #     prompt_text = json.load(file)
     positive_prompt_id = find_entries_with_title(prompt_text, "Positive")
+    character_image_id = find_entries_with_title(prompt_text, "Character")
     # negative_prompt_id = find_entries_with_title(prompt_text, "Negative")
     sampler_id = find_entries_with_title(prompt_text, "Sampler")
     sampler_id2 = find_entries_with_title(prompt_text, "Sampler2")
     origin_text = prompt_text[positive_prompt_id]["inputs"]["text"]
     prompt_text[positive_prompt_id]["inputs"]["text"] = keywords+origin_text
+    prompt_text[character_image_id]["inputs"]["image"] = f"{character_id}.jpg"
     # prompt_text[negative_prompt_id]["inputs"]["text"] = "nsfw"
     prompt_text[sampler_id]["inputs"]["seed"] = random.randint(0, 1000000)
     if(sampler_id2 != None):
