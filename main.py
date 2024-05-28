@@ -1,6 +1,7 @@
 import datetime
 import json
 import time
+import traceback
 import urllib.request
 import urllib.parse
 import random
@@ -25,7 +26,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s', 
     level=logging.INFO
 )
-
 
 def update_task_status(task_id, status=1):
     conn = None
@@ -58,27 +58,6 @@ def update_task_status(task_id, status=1):
         if conn:
             cursor.close()
             conn.close()
-
-def upload_s3(image_name, image):
-    BUCKET_NAME = os.getenv("S3_BUCKET")
-
-    s3 = boto3.client(
-        's3',
-        aws_access_key_id=os.getenv("CREDENTIALS_ACCESS_KEY"),
-        aws_secret_access_key=os.getenv("CREDENTIALS_SECRET_KEY"),
-    )
-
-    object_name = f"letters/{image_name}"
-
-    try:
-        s3.upload_fileobj(image, BUCKET_NAME, object_name)
-        return True
-    except ClientError as e:
-        logging.error(e)
-        return False
-    except Exception as e:
-        logging.error(e)
-        return False
     
 # Function to find and print the entries with the specified title
 def find_entries_with_title(data, title):
@@ -93,67 +72,29 @@ def queue_prompt(prompt, client_id):
     req = urllib.request.Request("http://{}/prompt".format(server_address), data=data)
     return json.loads(urllib.request.urlopen(req).read())
 
-def get_images(ws, prompt, client_id):
-    prompt_id = queue_prompt(prompt, client_id)['prompt_id']
-    save_image_websocket_node_id = find_entries_with_title(prompt, "SaveImageWebsocket")
-    output_images = {}
-    current_node = ""
-    while True:
-        out = ws.recv()
-        if isinstance(out, str):
-            message = json.loads(out)
-            if message['type'] == 'executing':
-                data = message['data']
-                if data['prompt_id'] == prompt_id:
-                    if data['node'] is None:
-                        break
-                    else:
-                        current_node = data['node']
-        else:
-            if current_node == save_image_websocket_node_id:
-                images_output = output_images.get(current_node, [])
-                images_output.append(out[8:])
-                output_images[current_node] = images_output
-
-    return output_images
-
 def make_images(message, client_id):
     letter_id = message["letter_id"]
     keywords = message["keywords"]
     prompt_text = message["prompt_text"]
     character_id = message["character_id"]
-    # json_file_path = 'workflow_api.json'
 
-    # with open(json_file_path, 'r') as file:
-    #     prompt_text = json.load(file)
     positive_prompt_id = find_entries_with_title(prompt_text, "Positive")
     character_image_id = find_entries_with_title(prompt_text, "Character")
     image_upload_id = find_entries_with_title(prompt_text, "SaveImageWithS3Upload")
-    # negative_prompt_id = find_entries_with_title(prompt_text, "Negative")
     sampler_id = find_entries_with_title(prompt_text, "Sampler")
     sampler_id2 = find_entries_with_title(prompt_text, "Sampler2")
     origin_text = prompt_text[positive_prompt_id]["inputs"]["text"]
+    
     prompt_text[positive_prompt_id]["inputs"]["text"] = keywords+origin_text
     prompt_text[character_image_id]["inputs"]["image"] = f"{character_id}.jpg"
     prompt_text[image_upload_id]["inputs"]["filename_prefix"] = letter_id
-    # prompt_text[negative_prompt_id]["inputs"]["text"] = "nsfw"
     prompt_text[sampler_id]["inputs"]["seed"] = random.randint(0, 1000000)
     if(sampler_id2 != None):
         prompt_text[sampler_id2]["inputs"]["seed"] = random.randint(0, 1000000)
 
-    ws = websocket.WebSocket()
-    ws.connect("ws://{}/ws?clientId={}".format(server_address, client_id))
-    # images = get_images(ws, prompt_text, client_id)
     image_result = queue_prompt(prompt_text, client_id)
 
-    # for node_id in images:
-    #     for idx, image_data in enumerate(images[node_id]):
-    #         image_name = f"{letter_id}_{idx}.jpg"
-    #         result = upload_s3(image_name, io.BytesIO(image_data))
-    #         if not result:
-    #             logging.error(f"Failed to upload image {image_name}")
-    #             return False
-    print(f"\nImage result: {image_result}")
+    logging.info(f"\nImage result: {image_result}")
     if image_result["status"] == "success":
         update_task_status(letter_id)
 
@@ -192,6 +133,7 @@ def receive_messages(max_number_of_messages: int = 1) -> None:
         logging.error(f"Failed to receive messages: {error}")
     except Exception as e:
         logging.error(f"Unexpected error: {e}")
+        logging.error(traceback.format_exc())
 
 if __name__ == "__main__":
     while True:
