@@ -71,7 +71,7 @@ def upload_s3(image_name, image):
     object_name = f"letters/{image_name}"
 
     try:
-        result = s3.upload_fileobj(image, BUCKET_NAME, object_name)
+        s3.upload_fileobj(image, BUCKET_NAME, object_name)
         return True
     except ClientError as e:
         logging.error(e)
@@ -141,17 +141,19 @@ def make_images(message, client_id):
 
     ws = websocket.WebSocket()
     ws.connect("ws://{}/ws?clientId={}".format(server_address, client_id))
-    images = get_images(ws, prompt_text, client_id)
+    # images = get_images(ws, prompt_text, client_id)
+    image_result = queue_prompt(prompt_text, client_id)
 
-    for node_id in images:
-        for idx, image_data in enumerate(images[node_id]):
-            image_name = f"{letter_id}_{idx}.jpg"
-            result = upload_s3(image_name, io.BytesIO(image_data))
-            if not result:
-                logging.error(f"Failed to upload image {image_name}")
-                return False
-        
-    update_task_status(letter_id)
+    # for node_id in images:
+    #     for idx, image_data in enumerate(images[node_id]):
+    #         image_name = f"{letter_id}_{idx}.jpg"
+    #         result = upload_s3(image_name, io.BytesIO(image_data))
+    #         if not result:
+    #             logging.error(f"Failed to upload image {image_name}")
+    #             return False
+    print(f"\nImage result: {image_result}")
+    if image_result["status"] == "success":
+        update_task_status(letter_id)
 
 sqs = boto3.client(
     'sqs',
