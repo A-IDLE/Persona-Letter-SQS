@@ -86,9 +86,10 @@ def make_images(message, client_id):
     origin_text = prompt_text[positive_prompt_id]["inputs"]["text"]
     
     prompt_text[positive_prompt_id]["inputs"]["text"] = keywords+origin_text
-    prompt_text[character_image_id]["inputs"]["image"] = f"{character_id}.jpg"
     prompt_text[image_upload_id]["inputs"]["filename_prefix"] = letter_id
     prompt_text[sampler_id]["inputs"]["seed"] = random.randint(0, 1000000)
+    if(character_image_id != None):
+        prompt_text[character_image_id]["inputs"]["image"] = f"{character_id}.jpg"
     if(sampler_id2 != None):
         prompt_text[sampler_id2]["inputs"]["seed"] = random.randint(0, 1000000)
 
