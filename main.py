@@ -80,7 +80,7 @@ def make_images(message, client_id):
 
     positive_prompt_id = find_entries_with_title(prompt_text, "Positive")
     character_image_id = find_entries_with_title(prompt_text, "Character")
-    image_upload_id = find_entries_with_title(prompt_text, "SaveImageWithS3Upload")
+    image_upload_id = find_entries_with_title(prompt_text, "Save Image With S3 Upload")
     sampler_id = find_entries_with_title(prompt_text, "Sampler")
     sampler_id2 = find_entries_with_title(prompt_text, "Sampler2")
     origin_text = prompt_text[positive_prompt_id]["inputs"]["text"]
