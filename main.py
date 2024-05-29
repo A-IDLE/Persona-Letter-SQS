@@ -95,8 +95,11 @@ def make_images(message, client_id):
     image_result = queue_prompt(prompt_text, client_id)
 
     logging.info(f"\nImage result: {image_result}")
-    if image_result["status"] == "success":
+    if len(image_result["node_errors"]) != 0:
         update_task_status(letter_id)
+        return
+    else:
+        logging.error(f"Image generation failed for letter_id: {letter_id}")
 
 sqs = boto3.client(
     'sqs',
