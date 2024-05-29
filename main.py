@@ -80,6 +80,7 @@ def make_images(message, client_id):
 
     positive_prompt_id = find_entries_with_title(prompt_text, "Positive")
     character_image_id = find_entries_with_title(prompt_text, "Character")
+    face_sample_id = find_entries_with_title(prompt_text, "FaceSample")
     image_upload_id = find_entries_with_title(prompt_text, "Save Image With S3 Upload")
     sampler_id = find_entries_with_title(prompt_text, "Sampler")
     sampler_id2 = find_entries_with_title(prompt_text, "Sampler2")
@@ -88,6 +89,8 @@ def make_images(message, client_id):
     prompt_text[positive_prompt_id]["inputs"]["text"] = keywords+origin_text
     prompt_text[image_upload_id]["inputs"]["filename_prefix"] = letter_id
     prompt_text[sampler_id]["inputs"]["seed"] = random.randint(0, 1000000)
+    if(face_sample_id != None):
+        prompt_text[face_sample_id]["inputs"]["image"] = f"({random.randint(1, 116)}).png"
     if(character_image_id != None):
         prompt_text[character_image_id]["inputs"]["image"] = f"{character_id}.jpg"
     if(sampler_id2 != None):
