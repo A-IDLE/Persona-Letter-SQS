@@ -90,7 +90,7 @@ def make_images(message, client_id):
     prompt_text[image_upload_id]["inputs"]["filename_prefix"] = letter_id
     prompt_text[sampler_id]["inputs"]["seed"] = random.randint(0, 1000000)
     if(face_sample_id != None):
-        prompt_text[face_sample_id]["inputs"]["image"] = f"({random.randint(1, 116)}).png"
+        prompt_text[face_sample_id]["inputs"]["image"] = f"({random.randint(1, 104)}).png"
     if(character_image_id != None):
         prompt_text[character_image_id]["inputs"]["image"] = f"{character_id}.jpg"
     if(sampler_id2 != None):
