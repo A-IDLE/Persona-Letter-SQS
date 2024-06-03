@@ -10,10 +10,7 @@ import boto3
 import logging
 from botocore.exceptions import BotoCoreError, ClientError
 from dotenv import load_dotenv
-import websocket #NOTE: websocket-client (https://github.com/websocket-client/websocket-client)
 import uuid
-import io
-import MySQLdb
 
 # Load environment variables
 load_dotenv()
@@ -26,38 +23,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s', 
     level=logging.INFO
 )
-
-def update_task_status(task_id, status=1):
-    conn = None
-    try:
-        # Retrieve database credentials from environment variables
-        host = os.getenv("host")
-        db_name = os.getenv("db_name")
-        user = os.getenv("user")
-        password = os.getenv("password")
-        
-        if not host or not db_name or not user or not password:
-            raise ValueError("Database credentials are not fully set in the environment variables")
-        
-        conn = MySQLdb.connect(
-            host=host,
-            db=db_name,
-            user=user,
-            passwd=password
-        )
-        
-        cursor = conn.cursor()
-        sql = '''UPDATE tbl_letter SET letter_image_status = %s WHERE letter_id = %s'''
-        cursor.execute(sql, (status, task_id))
-        conn.commit()
-        
-        logging.info("DB updated successfully.")
-    except (MySQLdb.Error, ValueError) as e:
-        logging.error(f"An error occurred: {e}")
-    finally:
-        if conn:
-            cursor.close()
-            conn.close()
     
 # Function to find and print the entries with the specified title
 def find_entries_with_title(data, title):
@@ -100,8 +65,7 @@ def make_images(message, client_id):
 
     logging.info(f"\nImage result: {image_result}")
     if len(image_result["node_errors"]) == 0:
-        update_task_status(letter_id)
-        return
+        logging.info(f"Image generation successful for letter_id: {letter_id}")
     else:
         logging.error(f"Image generation failed for letter_id: {letter_id}")
 
